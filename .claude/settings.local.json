@@ -6,7 +6,9 @@
       "Bash(npm i:*)",
       "Bash(npx tsx:*)",
       "Bash(git rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
