@@ -167,6 +167,14 @@ export class CommonsPool {
   }
 
   /**
+   * Restore pool state from persistence.
+   * Used when loading a saved ledger.
+   */
+  restoreState(state: PoolState): void {
+    this.state = { ...state };
+  }
+
+  /**
    * Get all transactions.
    */
   getTransactions(): readonly Transaction[] {

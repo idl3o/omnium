@@ -456,6 +456,84 @@ program
   });
 
 // =============================================================================
+// PERSISTENCE
+// =============================================================================
+
+program
+  .command('save')
+  .description('Save current ledger state to disk')
+  .action(async () => {
+    try {
+      if (!ledger.isPersistenceEnabled()) {
+        await ledger.enablePersistence();
+      }
+      const cid = await ledger.save();
+      console.log(chalk.green(`✓ Saved snapshot`));
+      console.log(chalk.gray(`  CID: ${cid.slice(0, 20)}...`));
+    } catch (err) {
+      console.log(chalk.red(`Error: ${(err as Error).message}`));
+    }
+  });
+
+program
+  .command('load')
+  .description('Load ledger state from disk')
+  .action(async () => {
+    try {
+      const loaded = await ledger.enablePersistence();
+      if (loaded) {
+        console.log(chalk.green(`✓ Loaded from persistence`));
+        const stats = ledger.getPersistenceStats();
+        if (stats?.lastSaveTime) {
+          console.log(chalk.gray(`  Last saved: ${new Date(stats.lastSaveTime).toISOString()}`));
+        }
+        console.log(chalk.gray(`  Snapshots: ${stats?.snapshotCount ?? 0}`));
+
+        // Show what was loaded
+        const wallets = ledger.wallets.getAllWallets();
+        const units = ledger.wallets.getAllUnits();
+        console.log(chalk.gray(`  Wallets: ${wallets.length}`));
+        console.log(chalk.gray(`  Units: ${units.length}`));
+      } else {
+        console.log(chalk.yellow('No saved state found. Starting fresh.'));
+      }
+    } catch (err) {
+      console.log(chalk.red(`Error: ${(err as Error).message}`));
+    }
+  });
+
+program
+  .command('persistence-status')
+  .description('Show persistence statistics')
+  .action(() => {
+    if (!ledger.isPersistenceEnabled()) {
+      console.log(chalk.yellow('Persistence not enabled. Use: save or load'));
+      return;
+    }
+    const stats = ledger.getPersistenceStats();
+    if (!stats) {
+      console.log(chalk.yellow('No persistence stats available'));
+      return;
+    }
+
+    console.log(chalk.bold('\nPersistence Status:\n'));
+    console.log(`  Initialized:    ${stats.initialized ? chalk.green('Yes') : chalk.red('No')}`);
+    console.log(`  Storage Path:   ${stats.storagePath}`);
+    console.log(`  Snapshots:      ${stats.snapshotCount}`);
+    console.log(`  TX Blocks:      ${stats.transactionBlockCount}`);
+    console.log(`  Pending TXs:    ${stats.pendingTransactions}`);
+    if (stats.lastSaveTime) {
+      console.log(`  Last Saved:     ${new Date(stats.lastSaveTime).toISOString()}`);
+    }
+    if (stats.cacheStats) {
+      const cache = stats.cacheStats;
+      console.log(`  Cache Entries:  ${cache.size}/${cache.maxSize}`);
+      console.log(`  Cache Hit Rate: ${(cache.hitRate * 100).toFixed(1)}%`);
+    }
+    console.log();
+  });
+
+// =============================================================================
 // HELPERS
 // =============================================================================
 

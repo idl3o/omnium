@@ -23,6 +23,8 @@ import { CommunityRegistry } from '../layers/local.js';
 import { PurposeRegistry } from '../layers/purpose.js';
 import { tickUnit } from '../layers/temporal.js';
 import { createUnit, splitUnit, mergeUnits, addProvenance } from '../core/omnium.js';
+import { PersistenceManager } from '../persistence/manager/persistence-manager.js';
+import type { PersistenceConfig } from '../persistence/types.js';
 
 export interface TransferResult {
   success: boolean;
@@ -41,6 +43,8 @@ export class OmniumLedger {
   readonly purposes: PurposeRegistry;
 
   private transactions: Transaction[] = [];
+  private persistence: PersistenceManager | null = null;
+  private autoSave = false;
 
   constructor(initialTime?: number) {
     this.pool = new CommonsPool(initialTime);
@@ -79,6 +83,10 @@ export class OmniumLedger {
 
     const unit = this.pool.mint(amount, toWalletId, note);
     this.wallets.addUnit(unit);
+
+    // Auto-save (fire and forget)
+    this.autoSaveIfEnabled();
+
     return unit;
   }
 
@@ -121,6 +129,9 @@ export class OmniumLedger {
       description: `Converted ${unit.magnitude.toFixed(2)}Ω → ${result.newUnit.magnitude.toFixed(2)}Ω`,
     };
     this.transactions.push(tx);
+
+    // Auto-save (fire and forget)
+    this.autoSaveIfEnabled();
 
     return result.newUnit;
   }
@@ -213,6 +224,9 @@ export class OmniumLedger {
     };
     this.transactions.push(tx);
 
+    // Auto-save (fire and forget)
+    this.autoSaveIfEnabled();
+
     return { success: true, transaction: tx };
   }
 
@@ -242,6 +256,9 @@ export class OmniumLedger {
         updated++;
       }
     }
+
+    // Auto-save (fire and forget)
+    this.autoSaveIfEnabled();
 
     return { updated, totalDemurrage, totalDividend };
   }
@@ -304,6 +321,122 @@ export class OmniumLedger {
       `║ Sim Time: ${new Date(poolState.currentTime).toISOString().slice(0, 10)}              ║`,
       '╚══════════════════════════════════════╝',
     ].join('\n');
+  }
+
+  // ==========================================================================
+  // PERSISTENCE METHODS
+  // ==========================================================================
+
+  /**
+   * Enable persistence with optional configuration.
+   * If a saved state exists, it will be loaded.
+   */
+  async enablePersistence(config?: Partial<PersistenceConfig>): Promise<boolean> {
+    if (this.persistence) {
+      return true; // Already enabled
+    }
+
+    this.persistence = new PersistenceManager(config);
+    await this.persistence.initialize();
+
+    // Check if saved state exists and load it
+    if (this.persistence.hasSavedState()) {
+      const snapshot = await this.persistence.loadSnapshot();
+      if (snapshot) {
+        // Restore state from snapshot
+        this.pool.restoreState({
+          totalMinted: snapshot.pool.totalMinted,
+          totalBurned: snapshot.pool.totalBurned,
+          currentSupply: snapshot.pool.currentSupply,
+          currentTime: snapshot.pool.currentTime,
+        });
+
+        this.wallets.clear();
+
+        // Restore communities
+        const communityMap = new Map(
+          snapshot.communities.map((c) => [c.id, c])
+        );
+        this.communities.import(communityMap);
+
+        // Restore purposes (need to deserialize Sets)
+        const { deserializePurpose } = await import('../persistence/serialization.js');
+        const purposeMap = new Map(
+          snapshot.purposes.map(deserializePurpose).map((p) => [p.id, p])
+        );
+        this.purposes.import(purposeMap);
+
+        // Restore wallets
+        const { deserializeWallet, deserializeUnit } = await import('../persistence/serialization.js');
+        for (const walletData of snapshot.wallets) {
+          const wallet = deserializeWallet(walletData);
+          this.wallets.restoreWallet(wallet);
+        }
+
+        // Restore units
+        for (const unitData of snapshot.units) {
+          const unit = deserializeUnit(unitData);
+          this.wallets.addUnit(unit);
+        }
+
+        return true;
+      }
+    }
+
+    this.autoSave = config?.autoSave ?? true;
+    return false; // No existing state loaded
+  }
+
+  /**
+   * Save current state to persistence.
+   * Returns the CID of the snapshot.
+   */
+  async save(): Promise<string> {
+    if (!this.persistence) {
+      throw new Error('Persistence not enabled. Call enablePersistence() first.');
+    }
+
+    const cid = await this.persistence.saveSnapshot(this);
+    return cid.toString();
+  }
+
+  /**
+   * Check if persistence is enabled.
+   */
+  isPersistenceEnabled(): boolean {
+    return this.persistence !== null;
+  }
+
+  /**
+   * Get persistence statistics.
+   */
+  getPersistenceStats(): ReturnType<PersistenceManager['getStats']> | null {
+    return this.persistence?.getStats() ?? null;
+  }
+
+  /**
+   * Disable persistence and cleanup.
+   */
+  async disablePersistence(): Promise<void> {
+    if (this.persistence) {
+      await this.persistence.close();
+      this.persistence = null;
+      this.autoSave = false;
+    }
+  }
+
+  /**
+   * Auto-save if enabled.
+   * Called internally after mutating operations.
+   */
+  private async autoSaveIfEnabled(): Promise<void> {
+    if (this.autoSave && this.persistence) {
+      try {
+        await this.persistence.saveSnapshot(this);
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+      }
+    }
   }
 }
 

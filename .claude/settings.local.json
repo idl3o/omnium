@@ -8,7 +8,14 @@
       "Bash(git rm:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(dir:*)",
+      "WebFetch(domain:ipfs.github.io)",
+      "Bash(npm ls:*)",
+      "Bash(npm view:*)"
     ]
   }
 }

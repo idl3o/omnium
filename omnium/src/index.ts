@@ -27,3 +27,6 @@ export * from './wallet/wallet.js';
 
 // Engine
 export * from './engine/ledger.js';
+
+// Persistence
+export * from './persistence/index.js';

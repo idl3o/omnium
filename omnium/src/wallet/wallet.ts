@@ -61,6 +61,26 @@ export class WalletManager {
   }
 
   /**
+   * Restore a wallet from persistence.
+   * Used when loading a saved ledger.
+   */
+  restoreWallet(wallet: Wallet): void {
+    this.wallets.set(wallet.id, wallet);
+    if (!this.unitsByWallet.has(wallet.id)) {
+      this.unitsByWallet.set(wallet.id, new Set());
+    }
+  }
+
+  /**
+   * Clear all data (for restoration).
+   */
+  clear(): void {
+    this.wallets.clear();
+    this.units.clear();
+    this.unitsByWallet.clear();
+  }
+
+  /**
    * Add a unit to a wallet.
    */
   addUnit(unit: OmniumUnit): void {
