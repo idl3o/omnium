@@ -202,7 +202,7 @@ interface OmniumUnit {
 
 ## Whitepaper
 
-For the complete technical specification, see the [Whitepaper](./website/app/whitepaper/page.tsx) or visit the [live documentation](https://idl3o.github.io/omnium/whitepaper/).
+For the complete technical specification, visit the [live whitepaper](https://idl3o.github.io/omnium/whitepaper/) or explore the sections above which cover the core concepts.
 
 ---
 
