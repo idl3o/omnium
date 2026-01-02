@@ -15,7 +15,14 @@
       "Bash(dir:*)",
       "WebFetch(domain:ipfs.github.io)",
       "Bash(npm ls:*)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:)",
+      "Bash(xargs:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(npx create-next-app@latest website --typescript --tailwind --eslint --app --import-alias=\"@/*\" --use-npm --turbopack)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }
