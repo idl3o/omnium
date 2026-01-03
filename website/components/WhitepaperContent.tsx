@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 
 const sections = [
@@ -18,15 +18,16 @@ const sections = [
   { id: 'conclusion', title: '10. Conclusion' },
 ]
 
-function TableOfContents({ activeSection }: { activeSection: string }) {
+function TableOfContents({ activeSection, onNavigate }: { activeSection: string; onNavigate?: () => void }) {
   return (
-    <nav className="hidden lg:block fixed left-8 top-1/2 -translate-y-1/2 w-48">
+    <nav>
       <p className="text-xs text-omnium-muted uppercase tracking-wider mb-4">Contents</p>
       <ul className="space-y-2">
         {sections.map((section) => (
           <li key={section.id}>
             <a
               href={`#${section.id}`}
+              onClick={onNavigate}
               className={`text-sm transition-colors block py-1 border-l-2 pl-3 ${
                 activeSection === section.id
                   ? 'text-dim-temporal border-dim-temporal'
@@ -39,6 +40,131 @@ function TableOfContents({ activeSection }: { activeSection: string }) {
         ))}
       </ul>
     </nav>
+  )
+}
+
+function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <div className="fixed top-0 left-0 right-0 h-1 bg-omnium-bg-secondary/50 z-50">
+      <motion.div
+        className="h-full bg-gradient-to-r from-dim-temporal to-dim-purpose"
+        style={{ width: `${progress}%` }}
+        initial={{ width: 0 }}
+        animate={{ width: `${progress}%` }}
+        transition={{ duration: 0.1 }}
+      />
+    </div>
+  )
+}
+
+function ScrollButtons() {
+  const [showTop, setShowTop] = useState(false)
+  const [showBottom, setShowBottom] = useState(true)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight
+
+      setShowTop(scrollTop > 300)
+      setShowBottom(scrollTop < scrollHeight - 300)
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
+  const scrollToBottom = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
+
+  return (
+    <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-40">
+      <AnimatePresence>
+        {showTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToTop}
+            className="w-10 h-10 rounded-full bg-omnium-bg-secondary border border-omnium-muted/20 text-omnium-muted hover:text-omnium-text hover:border-dim-temporal/50 transition-colors flex items-center justify-center shadow-lg"
+            aria-label="Scroll to top"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showBottom && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToBottom}
+            className="w-10 h-10 rounded-full bg-omnium-bg-secondary border border-omnium-muted/20 text-omnium-muted hover:text-omnium-text hover:border-dim-temporal/50 transition-colors flex items-center justify-center shadow-lg"
+            aria-label="Scroll to bottom"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function MobileTOC({ activeSection, isOpen, onToggle }: { activeSection: string; isOpen: boolean; onToggle: () => void }) {
+  return (
+    <>
+      {/* Toggle button - only visible on mobile */}
+      <button
+        onClick={onToggle}
+        className="lg:hidden fixed bottom-6 left-6 w-10 h-10 rounded-full bg-dim-temporal text-white flex items-center justify-center shadow-lg z-40"
+        aria-label="Toggle table of contents"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      {/* Slide-out panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onToggle}
+              className="lg:hidden fixed inset-0 bg-black/50 z-40"
+            />
+            {/* Panel */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'tween', duration: 0.3 }}
+              className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-omnium-bg border-r border-omnium-muted/10 p-6 pt-20 z-50 overflow-y-auto"
+            >
+              <button
+                onClick={onToggle}
+                className="absolute top-6 right-6 text-omnium-muted hover:text-omnium-text"
+                aria-label="Close menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <TableOfContents activeSection={activeSection} onNavigate={onToggle} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 
@@ -69,7 +195,24 @@ function Highlight({ color, children }: { color: string; children: React.ReactNo
 
 export function WhitepaperContent() {
   const [activeSection, setActiveSection] = useState('abstract')
+  const [readProgress, setReadProgress] = useState(0)
+  const [mobileTOCOpen, setMobileTOCOpen] = useState(false)
 
+  // Track reading progress
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight
+      const progress = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0
+      setReadProgress(Math.min(100, Math.max(0, progress)))
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Track active section
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -90,8 +233,15 @@ export function WhitepaperContent() {
     return () => observer.disconnect()
   }, [])
 
+  const toggleMobileTOC = useCallback(() => {
+    setMobileTOCOpen(prev => !prev)
+  }, [])
+
   return (
     <div className="min-h-screen bg-omnium-bg">
+      {/* Progress Bar */}
+      <ProgressBar progress={readProgress} />
+
       {/* Header */}
       <header className="border-b border-omnium-muted/10">
         <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
@@ -99,11 +249,33 @@ export function WhitepaperContent() {
             <span className="text-2xl">Ω</span>
             <span className="font-display">OMNIUM</span>
           </Link>
-          <span className="text-sm text-omnium-muted">Whitepaper v1.0</span>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://github.com/idl3o/omnium/blob/main/README.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm text-omnium-muted hover:text-omnium-text transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="hidden sm:inline">View MD</span>
+            </a>
+            <span className="text-sm text-omnium-muted">v1.0</span>
+          </div>
         </div>
       </header>
 
-      <TableOfContents activeSection={activeSection} />
+      {/* Desktop TOC */}
+      <div className="hidden lg:block fixed left-8 top-1/2 -translate-y-1/2 w-48">
+        <TableOfContents activeSection={activeSection} />
+      </div>
+
+      {/* Mobile TOC */}
+      <MobileTOC activeSection={activeSection} isOpen={mobileTOCOpen} onToggle={toggleMobileTOC} />
+
+      {/* Scroll Buttons */}
+      <ScrollButtons />
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-6 py-16">

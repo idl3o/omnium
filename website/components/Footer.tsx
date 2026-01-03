@@ -1,6 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import Link from 'next/link'
 
 export function Footer() {
   return (
@@ -29,12 +30,12 @@ export function Footer() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="/whitepaper"
+            <Link
+              href="/whitepaper/"
               className="px-6 py-3 rounded-full bg-dim-temporal text-white font-medium transition-all hover:bg-dim-temporal/90 hover:shadow-lg hover:shadow-dim-temporal/20"
             >
               Read the Whitepaper
-            </a>
+            </Link>
             <a
               href="https://github.com/idl3o/omnium"
               target="_blank"
