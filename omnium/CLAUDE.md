@@ -13,6 +13,8 @@ OMNIUM is a meta-currency framework prototype implementing "dimensional money" -
 - `P` = purpose set (intent channels)
 - `R` = reputation (provenance chain)
 
+**Current state:** 522 tests passing, full economics layer integrated.
+
 ## Commands
 
 ```bash
@@ -37,6 +39,20 @@ npx tsx src/cli/index.ts demo
 
 ## Architecture
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         OMNIUM LEDGER                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Commons Pool  │  Wallet Manager  │  Conversion Engine          │
+├─────────────────────────────────────────────────────────────────┤
+│                         FIVE LAYERS                             │
+│  Temporal  │  Locality  │  Purpose  │  Reputation               │
+├─────────────────────────────────────────────────────────────────┤
+│                      ECONOMICS LAYER                            │
+│  DividendPool  │  CommunityFund  │  ComputePool  │  Simulations │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Five Layers
 
 1. **Commons Pool** (`src/core/pool.ts`) - Base undifferentiated reserve, minting/burning
@@ -44,6 +60,15 @@ npx tsx src/cli/index.ts demo
 3. **Local Currencies** (`src/layers/local.ts`) - Community boundaries with exit fees
 4. **Purpose Channels** (`src/layers/purpose.ts`) - Intent-colored money with spending restrictions
 5. **Reputation Gradients** (`src/layers/reputation.ts`) - Provenance tracking and scoring
+
+### Economics Layer (`src/economics/`)
+
+The economics layer handles value flows within the system. Fees and demurrage don't vanish - they flow to where they create the most value.
+
+- **DividendPool** (`dividend-pool.ts`) - Collects T0 demurrage, distributes T2/T∞ dividends
+- **CommunityFund** (`community-fund.ts`) - Accumulates exit fees for community sovereignty
+- **ComputePool** (`compute-pool.ts`) - Proof-of-Useful-Compute bootstrap mechanism
+- **SimulationRegistry** (`simulation.ts`) - Law sets, deterministic containers, reproducibility proofs
 
 ### Core Components
 
@@ -65,6 +90,30 @@ interface OmniumUnit {
 }
 ```
 
+## Proof-of-Useful-Compute (Bootstrap)
+
+The bootstrap mechanism that allows the economy to start from zero:
+
+```
+External Requestor (pays $)
+        │
+        ▼
+   ComputePool ← manages job lifecycle
+        │
+        ▼
+   Provider (does verified work)
+        │
+        ▼
+   Fresh T0 Ω minted → spends → demurrage → DividendPool → dividends
+```
+
+**Key insight:** Value comes from *verified emergence* - emergent properties arising from following simulation laws correctly. Payment is for verified emergence, not CPU cycles.
+
+**Ledger methods:**
+- `ledger.submitComputeJob(requestor, spec, payment, options?)` - Submit a job
+- `ledger.claimComputeJob(jobId, providerId)` - Provider claims work
+- `ledger.completeComputeJob(jobId, providerId, result)` - Submit result, auto-mints reward
+
 ## Temporal Mechanics
 
 | Stratum | Behavior | Use Case |
@@ -78,7 +127,7 @@ interface OmniumUnit {
 
 - **Temporal:** Free to lock up (T0→T∞), costs to unlock (T∞→T0 = 10%)
 - **Locality:** 1% to enter community, boundary fee (configurable) to leave
-- **Purpose:** Free to add (restricts utility), discount to remove (3% default)
+- **Purpose:** Free to add (restricts utility), 3% to remove
 - **Reputation:** 5% to strip provenance
 
 ## CLI Commands Reference
@@ -102,3 +151,5 @@ demo                     Set up sample scenario
 - All operations are reversible (with fees)
 - Complexity is opt-in (base Ω is simple)
 - Fees fund commons / prevent gaming
+- External value bootstraps the economy (Proof-of-Useful-Compute)
+- Verified emergence creates real value
