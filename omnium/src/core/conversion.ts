@@ -102,6 +102,8 @@ export class ConversionEngine {
       reputation: 0,
       total: 0,
     };
+    // Track exit fees by community (for routing to community funds)
+    const localityExitFees = new Map<string, number>();
 
     // 1. Temporal conversion
     let newTemporality = unit.temporality;
@@ -149,6 +151,8 @@ export class ConversionEngine {
             fees.locality += fee;
             magnitude -= fee;
             newLocality.delete(communityId);
+            // Track this exit fee for routing to community fund
+            localityExitFees.set(communityId, fee);
           }
         }
       }
@@ -236,6 +240,7 @@ export class ConversionEngine {
       success: true,
       newUnit,
       fees,
+      localityExitFees: localityExitFees.size > 0 ? localityExitFees : undefined,
     };
   }
 

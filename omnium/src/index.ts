@@ -30,3 +30,6 @@ export * from './engine/ledger.js';
 
 // Persistence
 export * from './persistence/index.js';
+
+// Node (unified entry point)
+export * from './node.js';

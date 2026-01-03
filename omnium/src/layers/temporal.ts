@@ -173,3 +173,186 @@ export function describeTemporality(stratum: TemporalStratum): string {
 
   return parts.join(', ');
 }
+
+// =============================================================================
+// POOL-AWARE TEMPORAL EFFECTS
+// =============================================================================
+
+import type { DividendPool } from '../economics/dividend-pool.js';
+
+/**
+ * Result of a pool-aware tick operation.
+ */
+export interface PoolTickResult {
+  /** Updated unit */
+  unit: OmniumUnit;
+
+  /** Demurrage deposited to pool (if T0) */
+  demurrageDeposited: number;
+
+  /** Dividend requested from pool (if T2/T∞) */
+  dividendRequested: number;
+
+  /** Dividend actually received from pool */
+  dividendReceived: number;
+}
+
+/**
+ * Apply demurrage and deposit to DividendPool.
+ *
+ * This is the pool-aware version of applyDemurrage.
+ * The magnitude lost to decay is deposited into the pool
+ * to fund dividends for T2/T∞ holders.
+ */
+export function applyDemurrageWithPool(
+  unit: OmniumUnit,
+  currentTime: number,
+  pool: DividendPool
+): PoolTickResult {
+  if (unit.temporality !== TemporalStratum.T0) {
+    return {
+      unit,
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  const config = TEMPORAL_CONFIG[TemporalStratum.T0];
+  const elapsed = currentTime - unit.lastTickAt;
+  const years = elapsed / MS_PER_YEAR;
+
+  if (years <= 0) {
+    return {
+      unit,
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  // Continuous demurrage: magnitude * e^(-rate * time)
+  const decayFactor = Math.exp(-config.demurrageRate * years);
+  const newMagnitude = unit.magnitude * decayFactor;
+  const lost = unit.magnitude - newMagnitude;
+
+  if (lost < 0.0001) {
+    return {
+      unit: { ...unit, lastTickAt: currentTime },
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  // Deposit the demurrage into the pool
+  pool.depositDemurrage(lost, unit.id, currentTime);
+
+  return {
+    unit: {
+      ...unit,
+      magnitude: newMagnitude,
+      lastTickAt: currentTime,
+    },
+    demurrageDeposited: lost,
+    dividendRequested: 0,
+    dividendReceived: 0,
+  };
+}
+
+/**
+ * Apply dividend funded by DividendPool.
+ *
+ * This is the pool-aware version of applyDividend.
+ * The growth is funded by withdrawing from the pool.
+ * If the pool is insufficient, growth is proportionally reduced.
+ */
+export function applyDividendWithPool(
+  unit: OmniumUnit,
+  currentTime: number,
+  pool: DividendPool
+): PoolTickResult {
+  const config = TEMPORAL_CONFIG[unit.temporality];
+  if (config.dividendRate <= 0) {
+    return {
+      unit,
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  const elapsed = currentTime - unit.lastTickAt;
+  const years = elapsed / MS_PER_YEAR;
+
+  if (years <= 0) {
+    return {
+      unit,
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  // Calculate desired growth
+  const growthFactor = Math.exp(config.dividendRate * years);
+  const desiredMagnitude = unit.magnitude * growthFactor;
+  const dividendRequested = desiredMagnitude - unit.magnitude;
+
+  if (dividendRequested < 0.0001) {
+    return {
+      unit: { ...unit, lastTickAt: currentTime },
+      demurrageDeposited: 0,
+      dividendRequested: 0,
+      dividendReceived: 0,
+    };
+  }
+
+  // Withdraw from pool (may get less than requested)
+  const dividendReceived = pool.withdrawDividend(
+    dividendRequested,
+    unit.id,
+    currentTime
+  );
+
+  const newMagnitude = unit.magnitude + dividendReceived;
+
+  return {
+    unit: {
+      ...unit,
+      magnitude: newMagnitude,
+      lastTickAt: currentTime,
+    },
+    demurrageDeposited: 0,
+    dividendRequested,
+    dividendReceived,
+  };
+}
+
+/**
+ * Apply all temporal effects using the DividendPool.
+ *
+ * This is the pool-aware version of tickUnit.
+ * Use this in the ledger to ensure demurrage funds dividends.
+ */
+export function tickUnitWithPool(
+  unit: OmniumUnit,
+  currentTime: number,
+  pool: DividendPool
+): PoolTickResult {
+  switch (unit.temporality) {
+    case TemporalStratum.T0:
+      return applyDemurrageWithPool(unit, currentTime, pool);
+    case TemporalStratum.T1:
+      // Seasonal: no change, just update tick time
+      return {
+        unit: { ...unit, lastTickAt: currentTime },
+        demurrageDeposited: 0,
+        dividendRequested: 0,
+        dividendReceived: 0,
+      };
+    case TemporalStratum.T2:
+    case TemporalStratum.TInfinity:
+      return applyDividendWithPool(unit, currentTime, pool);
+  }
+}

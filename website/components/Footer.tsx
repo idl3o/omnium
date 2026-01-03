@@ -31,10 +31,16 @@ export function Footer() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/whitepaper/"
+              href="/docs"
               className="px-6 py-3 rounded-full bg-dim-temporal text-white font-medium transition-all hover:bg-dim-temporal/90 hover:shadow-lg hover:shadow-dim-temporal/20"
             >
-              Read the Whitepaper
+              Read the Docs
+            </Link>
+            <Link
+              href="/whitepaper/"
+              className="px-6 py-3 rounded-full border border-omnium-muted/30 text-omnium-text font-medium transition-all hover:border-omnium-muted/60 hover:bg-omnium-bg-secondary"
+            >
+              Whitepaper
             </Link>
             <a
               href="https://github.com/idl3o/omnium"
@@ -42,7 +48,7 @@ export function Footer() {
               rel="noopener noreferrer"
               className="px-6 py-3 rounded-full border border-omnium-muted/30 text-omnium-text font-medium transition-all hover:border-omnium-muted/60 hover:bg-omnium-bg-secondary"
             >
-              View on GitHub
+              GitHub
             </a>
           </div>
         </motion.div>

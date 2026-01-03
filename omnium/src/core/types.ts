@@ -223,6 +223,8 @@ export interface ConversionResult {
     reputation: number;
     total: number;
   };
+  /** Exit fees by community (for routing to community funds) */
+  localityExitFees?: Map<string, number>;
   error?: string;
 }
 

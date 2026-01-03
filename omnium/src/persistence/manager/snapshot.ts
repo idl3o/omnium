@@ -24,6 +24,7 @@ import {
  */
 export function createSnapshot(ledger: OmniumLedger): LedgerSnapshot {
   const poolState = ledger.pool.getState();
+  const dividendPoolState = ledger.dividendPool.export();
 
   return {
     version: SCHEMA_VERSION,
@@ -34,6 +35,15 @@ export function createSnapshot(ledger: OmniumLedger): LedgerSnapshot {
       totalBurned: poolState.totalBurned,
       currentSupply: poolState.currentSupply,
       currentTime: poolState.currentTime,
+    },
+
+    dividendPool: {
+      balance: dividendPoolState.balance,
+      totalDemurrageCollected: dividendPoolState.totalDemurrageCollected,
+      totalDividendsDistributed: dividendPoolState.totalDividendsDistributed,
+      totalDividendsRequested: dividendPoolState.totalDividendsRequested,
+      depositCount: dividendPoolState.depositCount,
+      withdrawalCount: dividendPoolState.withdrawalCount,
     },
 
     units: ledger.wallets.getAllUnits().map(serializeUnit),
@@ -48,8 +58,8 @@ export function createSnapshot(ledger: OmniumLedger): LedgerSnapshot {
  * Creates a new OmniumLedger instance with all state restored.
  */
 export function restoreFromSnapshot(snapshot: LedgerSnapshot): OmniumLedger {
-  // Check schema version
-  if (snapshot.version !== SCHEMA_VERSION) {
+  // Check schema version (support version 1 for backwards compat)
+  if (snapshot.version !== SCHEMA_VERSION && snapshot.version !== 1) {
     throw new Error(
       `Unsupported snapshot version: ${snapshot.version}. Expected: ${SCHEMA_VERSION}`
     );
@@ -65,6 +75,18 @@ export function restoreFromSnapshot(snapshot: LedgerSnapshot): OmniumLedger {
     currentSupply: snapshot.pool.currentSupply,
     currentTime: snapshot.pool.currentTime,
   });
+
+  // Restore dividend pool state (if present - v2+)
+  if (snapshot.dividendPool) {
+    ledger.dividendPool.import({
+      balance: snapshot.dividendPool.balance,
+      totalDemurrageCollected: snapshot.dividendPool.totalDemurrageCollected,
+      totalDividendsDistributed: snapshot.dividendPool.totalDividendsDistributed,
+      totalDividendsRequested: snapshot.dividendPool.totalDividendsRequested,
+      depositCount: snapshot.dividendPool.depositCount,
+      withdrawalCount: snapshot.dividendPool.withdrawalCount,
+    });
+  }
 
   // Clear existing data
   ledger.wallets.clear();

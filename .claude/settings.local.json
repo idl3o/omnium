@@ -23,7 +23,11 @@
       "Bash(npx create-next-app@latest website --typescript --tailwind --eslint --app --import-alias=\"@/*\" --use-npm --turbopack)",
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "Bash(cat:*)",
+      "Bash(wc -l:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

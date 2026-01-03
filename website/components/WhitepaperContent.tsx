@@ -708,16 +708,21 @@ export function WhitepaperContent() {
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-omnium-muted/10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <Link href="/" className="text-omnium-muted hover:text-omnium-text transition-colors">
-            ← Back to Home
+            &larr; Back to Home
           </Link>
-          <a
-            href="https://github.com/idl3o/omnium"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-omnium-muted hover:text-omnium-text transition-colors"
-          >
-            View on GitHub →
-          </a>
+          <div className="flex items-center gap-6">
+            <Link href="/docs" className="text-omnium-muted hover:text-omnium-text transition-colors">
+              Technical Docs
+            </Link>
+            <a
+              href="https://github.com/idl3o/omnium"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-omnium-muted hover:text-omnium-text transition-colors"
+            >
+              GitHub &rarr;
+            </a>
+          </div>
         </div>
       </main>
     </div>

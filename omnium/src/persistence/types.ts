@@ -71,6 +71,19 @@ export interface SerializedPoolState {
   currentTime: number;
 }
 
+/**
+ * Serializable dividend pool state.
+ * Tracks the demurrage-to-dividend flow.
+ */
+export interface SerializedDividendPoolState {
+  balance: number;
+  totalDemurrageCollected: number;
+  totalDividendsDistributed: number;
+  totalDividendsRequested: number;
+  depositCount: number;
+  withdrawalCount: number;
+}
+
 // =============================================================================
 // LEDGER SNAPSHOT
 // =============================================================================
@@ -89,6 +102,9 @@ export interface LedgerSnapshot {
   /** Commons Pool state */
   pool: SerializedPoolState;
 
+  /** Dividend Pool state (time preference arbitrage) */
+  dividendPool?: SerializedDividendPoolState;
+
   /** All OmniumUnits (serialized) */
   units: SerializedOmniumUnit[];
 
@@ -106,7 +122,7 @@ export interface LedgerSnapshot {
 }
 
 /** Current schema version */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // =============================================================================
 // PERSISTENCE MANIFEST
