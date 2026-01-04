@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: omnium-stream
+    ports:
+      - "1935:1935"   # RTMP ingest (OBS connects here)
+      - "8888:8888"   # HLS playback (browser connects here)
+      - "8889:8889"   # WebRTC (future low-latency)
+      - "8554:8554"   # RTSP (optional)
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped

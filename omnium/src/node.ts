@@ -52,6 +52,16 @@ import {
 import { createSnapshot, restoreFromSnapshot } from './persistence/manager/snapshot.js';
 import type { ContentStore, LedgerSnapshot, PersistenceConfig } from './persistence/types.js';
 import { DEFAULT_PERSISTENCE_CONFIG } from './persistence/types.js';
+import {
+  BlockchainAnchor,
+  createBlockchainAnchor,
+  type BlockchainProvider,
+  type AnchorConfig,
+  type CheckpointResult,
+  type LockResult,
+  type MerkleProof,
+  cidToBytes32,
+} from './anchor/index.js';
 
 /**
  * Configuration for OmniumNode.
@@ -65,6 +75,20 @@ export interface OmniumNodeConfig extends Partial<PersistenceConfig> {
 
   /** IPNS key name for publishing (default: 'omnium-head') */
   ipnsKeyName?: string;
+
+  /** Blockchain anchor configuration (optional) */
+  anchor?: {
+    /** RPC URL for the blockchain */
+    rpcUrl: string;
+    /** Contract address */
+    contractAddress: string;
+    /** Private key for signing transactions */
+    privateKey?: string;
+    /** Chain ID */
+    chainId: number;
+    /** Auto-checkpoint interval (in saves) */
+    checkpointInterval?: number;
+  };
 }
 
 const DEFAULT_NODE_CONFIG: OmniumNodeConfig = {
@@ -92,6 +116,8 @@ export class OmniumNode {
   private config: OmniumNodeConfig;
   private _ledger: OmniumLedger;
   private initialized = false;
+  private _anchor: BlockchainAnchor | null = null;
+  private savesSinceCheckpoint = 0;
 
   /**
    * Create an OmniumNode.
@@ -161,6 +187,20 @@ export class OmniumNode {
    */
   get isNetworked(): boolean {
     return this.config.networked === true && this.discovery !== null;
+  }
+
+  /**
+   * Check if blockchain anchoring is enabled.
+   */
+  get isAnchored(): boolean {
+    return this._anchor !== null;
+  }
+
+  /**
+   * Get the blockchain anchor instance.
+   */
+  get anchor(): BlockchainAnchor | null {
+    return this._anchor;
   }
 
   /**
@@ -321,6 +361,181 @@ export class OmniumNode {
   }
 
   // ===========================================================================
+  // BLOCKCHAIN ANCHORING
+  // ===========================================================================
+
+  /**
+   * Initialize blockchain anchor.
+   * Call this with a provider to enable on-chain anchoring.
+   */
+  async initializeAnchor(provider: BlockchainProvider): Promise<void> {
+    if (!this.config.anchor) {
+      throw new Error('Anchor config not provided');
+    }
+
+    const nodeIdBytes = this.nodeIdToBytes32();
+
+    this._anchor = createBlockchainAnchor(
+      {
+        rpcUrl: this.config.anchor.rpcUrl,
+        contractAddress: this.config.anchor.contractAddress,
+        privateKey: this.config.anchor.privateKey,
+        chainId: this.config.anchor.chainId,
+        nodeId: nodeIdBytes,
+        checkpointInterval: this.config.anchor.checkpointInterval,
+      },
+      provider
+    );
+
+    // Check if node is registered
+    const isRegistered = await this._anchor.isNodeRegistered();
+    if (!isRegistered) {
+      // Auto-register if we have write access
+      const result = await this._anchor.registerNode();
+      if (!result.success) {
+        console.warn('[OmniumNode] Failed to register node on-chain:', result.error);
+      }
+    }
+  }
+
+  /**
+   * Convert node ID to bytes32 for contract.
+   */
+  private nodeIdToBytes32(): string {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(this.nodeId);
+    // Pad or truncate to 32 bytes
+    const padded = new Uint8Array(32);
+    padded.set(bytes.slice(0, 32));
+    return '0x' + Array.from(padded).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Anchor current state to blockchain.
+   * Creates a checkpoint with provenance Merkle root.
+   */
+  async anchorState(): Promise<CheckpointResult> {
+    if (!this._anchor) {
+      return { success: false, error: 'Anchor not initialized' };
+    }
+
+    // Get current head CID
+    const headCid = this.getHeadCid();
+    if (!headCid) {
+      return { success: false, error: 'No head CID - save first' };
+    }
+
+    // Get snapshot
+    const snapshot = createSnapshot(this._ledger);
+
+    // Store snapshot to get its CID
+    const snapshotCid = await this.store.store(snapshot);
+
+    // Create checkpoint
+    return this._anchor.createCheckpoint(
+      CID.parse(headCid),
+      snapshotCid,
+      {
+        height: this.getHeight(),
+        totalSupply: snapshot.pool?.reserve ?? 0,
+        unitCount: snapshot.units?.length ?? 0,
+        units: (snapshot.units ?? []).map(u => ({
+          id: u.id,
+          provenance: u.provenance.map(p => ({
+            unitId: u.id,
+            timestamp: p.timestamp,
+            type: p.type,
+            fromWallet: p.fromWallet,
+            toWallet: p.toWallet,
+            amount: p.amount,
+            note: p.note,
+          })),
+        })),
+      }
+    );
+  }
+
+  /**
+   * Update head CID on-chain (lightweight, no checkpoint).
+   */
+  async anchorHead(): Promise<{ success: boolean; error?: string }> {
+    if (!this._anchor) {
+      return { success: false, error: 'Anchor not initialized' };
+    }
+
+    const headCid = this.getHeadCid();
+    if (!headCid) {
+      return { success: false, error: 'No head CID' };
+    }
+
+    return this._anchor.updateHead(CID.parse(headCid), this.getHeight());
+  }
+
+  /**
+   * Resolve head CID from on-chain (trustless IPNS alternative).
+   */
+  async resolveAnchoredHead(nodeId?: string): Promise<string | null> {
+    if (!this._anchor) {
+      return null;
+    }
+    return this._anchor.resolveHead(nodeId);
+  }
+
+  /**
+   * Create a temporal lock on-chain (T0 → T2/T∞).
+   */
+  async createTemporalLock(
+    unitId: string,
+    amount: number,
+    toStratum: 'T2' | 'TInfinity',
+    lockDurationYears?: number
+  ): Promise<LockResult> {
+    if (!this._anchor) {
+      return { success: false, error: 'Anchor not initialized' };
+    }
+
+    // Get unit CID
+    const unit = this._ledger.getUnit(unitId);
+    if (!unit) {
+      return { success: false, error: 'Unit not found' };
+    }
+
+    // Store unit to get CID
+    const unitCid = await this.store.store(unit);
+
+    return this._anchor.createTemporalLock(
+      unitCid,
+      amount,
+      toStratum,
+      lockDurationYears
+    );
+  }
+
+  /**
+   * Release a temporal lock on-chain.
+   */
+  async releaseTemporalLock(lockId: string): Promise<{ success: boolean; error?: string }> {
+    if (!this._anchor) {
+      return { success: false, error: 'Anchor not initialized' };
+    }
+
+    return this._anchor.releaseTemporalLock(lockId);
+  }
+
+  /**
+   * Generate a provenance proof for a unit.
+   */
+  generateProvenanceProof(unitId: string, provenanceIndex: number): MerkleProof | null {
+    if (!this._anchor) {
+      return null;
+    }
+
+    // The anchor builds the tree during checkpointing
+    // This returns a proof from the last checkpoint's tree
+    return this._anchor.generateProvenanceProof(provenanceIndex);
+  }
+
+  // ===========================================================================
   // INFO / STATUS
   // ===========================================================================
 
@@ -330,22 +545,26 @@ export class OmniumNode {
   getInfo(): {
     nodeId: string;
     networked: boolean;
+    anchored: boolean;
     height: number;
     headCid: string | null;
     ipnsName: string | null;
     peerCount: number;
     knownPeers: number;
+    anchorContract: string | null;
   } {
     const networkedStore = this.store as NetworkedHeliaStore;
 
     return {
       nodeId: this.nodeId,
       networked: this.isNetworked,
+      anchored: this.isAnchored,
       height: this.getHeight(),
       headCid: this.getHeadCid(),
       ipnsName: this.discovery?.getOwnName() ?? null,
       peerCount: networkedStore.getPeerCount?.() ?? 0,
       knownPeers: this.discovery?.getKnownPeers().length ?? 0,
+      anchorContract: this.config.anchor?.contractAddress ?? null,
     };
   }
 

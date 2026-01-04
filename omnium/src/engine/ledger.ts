@@ -34,6 +34,14 @@ import {
   ComputeResult,
   MintResult,
 } from '../economics/compute-pool.js';
+import {
+  ContributionPool,
+  ContributionPoolStats,
+  ActiveSimulation,
+  ComputeContribution,
+  ActivateSimulationOptions,
+  RewardDistribution,
+} from '../economics/contribution-pool.js';
 import { SimulationRegistry } from '../economics/simulation.js';
 import { PersistenceManager } from '../persistence/manager/persistence-manager.js';
 import type { PersistenceConfig } from '../persistence/types.js';
@@ -56,6 +64,7 @@ export class OmniumLedger {
   readonly dividendPool: DividendPool;
   readonly communityFunds: CommunityFundManager;
   readonly computePool: ComputePool;
+  readonly contributionPool: ContributionPool;
   readonly simulations: SimulationRegistry;
 
   private transactions: Transaction[] = [];
@@ -71,10 +80,23 @@ export class OmniumLedger {
     this.dividendPool = new DividendPool();
     this.communityFunds = new CommunityFundManager();
     this.computePool = new ComputePool(() => this.currentTime);
+    this.contributionPool = new ContributionPool(() => this.currentTime);
     this.simulations = new SimulationRegistry();
 
     // Wire compute pool to mint rewards through the ledger
     this.computePool.setMintCallback(
+      (amount, toWallet, purpose, locality, note) => {
+        try {
+          const unit = this.mintCompute(amount, toWallet, purpose, locality, note);
+          return unit.id;
+        } catch {
+          return null;
+        }
+      }
+    );
+
+    // Wire contribution pool to mint rewards through the ledger
+    this.contributionPool.setMintCallback(
       (amount, toWallet, purpose, locality, note) => {
         try {
           const unit = this.mintCompute(amount, toWallet, purpose, locality, note);
@@ -230,6 +252,101 @@ export class OmniumLedger {
    */
   getComputeStats(): ComputePoolStats {
     return this.computePool.getStats();
+  }
+
+  // ===========================================================================
+  // CONTRIBUTION POOL METHODS (Pool-based PoUC)
+  // ===========================================================================
+
+  /**
+   * Activate a simulation that providers can contribute to.
+   * Simulations define "useful" through their LawSet.
+   */
+  activateSimulation(
+    name: string,
+    description: string,
+    lawSetId: string,
+    containerId: string,
+    options: ActivateSimulationOptions
+  ): ActiveSimulation {
+    return this.contributionPool.activateSimulation(
+      name,
+      description,
+      lawSetId,
+      containerId,
+      options
+    );
+  }
+
+  /**
+   * Add funding to an existing simulation.
+   */
+  fundSimulation(simulationId: string, amount: number): boolean {
+    return this.contributionPool.fundSimulation(simulationId, amount);
+  }
+
+  /**
+   * Start contributing compute to a simulation.
+   * Called when a provider's daemon begins working.
+   */
+  startContribution(
+    simulationId: string,
+    providerId: string,
+    startStateCid: string
+  ): ComputeContribution | null {
+    // Ensure provider has a wallet
+    const wallet = this.wallets.getWallet(providerId);
+    if (!wallet) {
+      return null;
+    }
+    return this.contributionPool.startContribution(simulationId, providerId, startStateCid);
+  }
+
+  /**
+   * Record compute units contributed.
+   * Called periodically by provider daemon to report progress.
+   */
+  recordContribution(
+    contributionId: string,
+    computeUnits: number,
+    stepsExecuted: number,
+    currentStateCid?: string
+  ): boolean {
+    return this.contributionPool.recordContribution(
+      contributionId,
+      computeUnits,
+      stepsExecuted,
+      currentStateCid
+    );
+  }
+
+  /**
+   * End a contribution.
+   * Called when provider's daemon stops working on a simulation.
+   */
+  endContribution(contributionId: string, finalStateCid?: string): boolean {
+    return this.contributionPool.endContribution(contributionId, finalStateCid);
+  }
+
+  /**
+   * Distribute rewards for completed contributions to a simulation.
+   */
+  distributeContributionRewards(simulationId: string): RewardDistribution {
+    return this.contributionPool.distributeRewards(simulationId);
+  }
+
+  /**
+   * Get active simulations.
+   */
+  getActiveSimulations(): ActiveSimulation[] {
+    return this.contributionPool.getActiveSimulations();
+  }
+
+  /**
+   * Get contribution pool statistics.
+   */
+  getContributionStats(): ContributionPoolStats {
+    return this.contributionPool.getStats();
   }
 
   /**
@@ -490,6 +607,7 @@ export class OmniumLedger {
     const purposes = this.purposes.getAllPurposes();
     const divPoolStats = this.dividendPool.getStats();
     const computeStats = this.computePool.getStats();
+    const contribStats = this.contributionPool.getStats();
 
     const totalByStratum: Record<TemporalStratum, number> = {
       [TemporalStratum.T0]: 0,
@@ -524,11 +642,17 @@ export class OmniumLedger {
       `║   Dividends Out:    ${divPoolStats.totalDividendsDistributed.toFixed(2).padStart(11)}Ω ║`,
       `║   Funding Ratio:    ${fundingPct.padStart(11)}% ║`,
       '╠══════════════════════════════════════╣',
-      '║ Compute Pool (Bootstrap):            ║',
+      '║ Compute Pool (Job-based):            ║',
       `║   Jobs Pending:     ${computeStats.pendingJobs.toString().padStart(11)} ║`,
       `║   Jobs Completed:   ${computeStats.completedJobs.toString().padStart(11)} ║`,
       `║   Payments In:      ${computeStats.totalPaymentReceived.toFixed(2).padStart(11)}$ ║`,
       `║   Rewards Minted:   ${computeStats.totalRewardsMinted.toFixed(2).padStart(11)}Ω ║`,
+      '╠══════════════════════════════════════╣',
+      '║ Contribution Pool (Seamless):        ║',
+      `║   Active Sims:      ${contribStats.activeSimulations.toString().padStart(11)} ║`,
+      `║   Active Providers: ${contribStats.activeProviders.toString().padStart(11)} ║`,
+      `║   Compute Units:    ${contribStats.totalComputeContributed.toString().padStart(11)} ║`,
+      `║   Rewards Paid:     ${contribStats.totalRewardsDistributed.toFixed(2).padStart(11)}Ω ║`,
       '╠══════════════════════════════════════╣',
       `║ Wallets:      ${wallets.length.toString().padStart(20)} ║`,
       `║ Units:        ${units.length.toString().padStart(20)} ║`,

@@ -14,6 +14,8 @@ import { TemporalStratum } from '../core/types.js';
 import { unitSummary } from '../core/omnium.js';
 import { describeTemporality } from '../layers/temporal.js';
 import { summarizeProvenance, getReputationScore } from '../layers/reputation.js';
+import { getQueryEngine } from '../query/engine.js';
+import { getQueryStore } from '../query/store.js';
 
 // Global ledger instance
 let ledger: OmniumLedger;
@@ -530,6 +532,278 @@ program
       console.log(`  Cache Entries:  ${cache.size}/${cache.maxSize}`);
       console.log(`  Cache Hit Rate: ${(cache.hitRate * 100).toFixed(1)}%`);
     }
+    console.log();
+  });
+
+// =============================================================================
+// QUERY COMMANDS
+// =============================================================================
+
+const queryEngine = getQueryEngine();
+const queryStore = getQueryStore();
+
+program
+  .command('q <content...>')
+  .description('Submit a query (think of it as asking an AI)')
+  .alias('query')
+  .action(async (contentParts: string[]) => {
+    const content = contentParts.join(' ');
+    const userId = queryStore.getUserId();
+
+    console.log(chalk.blue('Processing query...\n'));
+
+    try {
+      // Subscribe to progress events
+      const unsubscribe = queryEngine.on((event) => {
+        if (event.type === 'compute_progress' && event.partial) {
+          process.stdout.write(chalk.gray('.'));
+        }
+      });
+
+      const { query, result } = await queryEngine.query(content, userId, {
+        onProgress: () => {
+          // Progress handled by event listener
+        },
+      });
+
+      unsubscribe();
+      console.log('\n');
+
+      // Save locally
+      queryStore.saveQuery(query);
+      queryStore.saveResult(result);
+
+      // Display result
+      console.log(chalk.green('Response:'));
+      console.log(result.content);
+      console.log();
+
+      // Show attestation summary
+      console.log(chalk.gray(`Query ID: ${query.id.slice(0, 8)}...`));
+      console.log(chalk.gray(`Compute: ${result.metrics.computeUnits} units in ${result.metrics.durationMs}ms`));
+      console.log(chalk.gray(`Attestation: ${result.attestation.outputCid.slice(0, 20)}...`));
+      console.log();
+      console.log(chalk.gray('Share with: share ' + query.id.slice(0, 8)));
+    } catch (err) {
+      console.log(chalk.red(`Error: ${(err as Error).message}`));
+    }
+  });
+
+program
+  .command('queries')
+  .description('List recent queries (local/private)')
+  .option('-n, --limit <n>', 'Number of queries to show', '10')
+  .action((options: { limit: string }) => {
+    const limit = parseInt(options.limit, 10);
+    const queries = queryStore.listQueries(limit);
+
+    if (queries.length === 0) {
+      console.log(chalk.yellow('No queries yet. Try: q "What is the meaning of life?"'));
+      return;
+    }
+
+    console.log(chalk.bold(`\nRecent Queries (${queries.length}):\n`));
+    for (const query of queries) {
+      const result = queryStore.getResultForQuery(query.id);
+      const shared = queryStore.isShared(query.id);
+      const timestamp = new Date(query.timestamp).toLocaleString();
+      const preview = query.content.slice(0, 50) + (query.content.length > 50 ? '...' : '');
+
+      console.log(
+        `  ${chalk.cyan(query.id.slice(0, 8))} ` +
+          `${chalk.gray(timestamp)} ` +
+          (shared ? chalk.green('[shared]') : chalk.gray('[private]'))
+      );
+      console.log(`    ${preview}`);
+      if (result) {
+        console.log(chalk.gray(`    → ${result.metrics.computeUnits} compute units`));
+      }
+      console.log();
+    }
+  });
+
+program
+  .command('query-result <queryId>')
+  .description('Show full result for a query')
+  .alias('qr')
+  .action((queryId: string) => {
+    // Find query by prefix
+    const queries = queryStore.listQueries(100);
+    const query = queries.find((q) => q.id.startsWith(queryId));
+
+    if (!query) {
+      console.log(chalk.red(`Query not found: ${queryId}`));
+      return;
+    }
+
+    const result = queryStore.getResultForQuery(query.id);
+    if (!result) {
+      console.log(chalk.red('Result not found (computation may have failed)'));
+      return;
+    }
+
+    console.log(chalk.bold('\nQuery:'));
+    console.log(chalk.cyan(query.content));
+    console.log();
+    console.log(chalk.bold('Response:'));
+    console.log(result.content);
+    console.log();
+    console.log(chalk.bold('Attestation:'));
+    console.log(chalk.gray(`  Input CID:  ${result.attestation.inputCid}`));
+    console.log(chalk.gray(`  Code CID:   ${result.attestation.codeCid}`));
+    console.log(chalk.gray(`  Output CID: ${result.attestation.outputCid}`));
+    console.log(chalk.gray(`  Proof:      ${result.attestation.proofMethod}`));
+    console.log(chalk.gray(`  Provider:   ${result.attestation.providerId}`));
+    console.log();
+  });
+
+program
+  .command('share <queryId>')
+  .description('Share a query/result (makes it discoverable)')
+  .option('-t, --tags <tags>', 'Comma-separated tags')
+  .option('-v, --visibility <level>', 'Visibility: shared or public', 'shared')
+  .action((queryId: string, options: { tags?: string; visibility?: string }) => {
+    // Find query by prefix
+    const queries = queryStore.listQueries(100);
+    const query = queries.find((q) => q.id.startsWith(queryId));
+
+    if (!query) {
+      console.log(chalk.red(`Query not found: ${queryId}`));
+      return;
+    }
+
+    if (queryStore.isShared(query.id)) {
+      console.log(chalk.yellow('Already shared'));
+      const entry = queryStore.getSharedEntry(query.id);
+      if (entry) {
+        console.log(chalk.gray(`  Shared at: ${new Date(entry.sharedAt).toLocaleString()}`));
+        console.log(chalk.gray(`  Tips: ${entry.value.tips}Ω`));
+      }
+      return;
+    }
+
+    const tags = options.tags?.split(',').map((t) => t.trim());
+    const visibility = (options.visibility as 'shared' | 'public') ?? 'shared';
+
+    const entry = queryStore.share(query.id, visibility, tags);
+    if (!entry) {
+      console.log(chalk.red('Failed to share (result may be missing)'));
+      return;
+    }
+
+    console.log(chalk.green('✓ Shared query'));
+    console.log(chalk.gray(`  Query: ${query.content.slice(0, 40)}...`));
+    console.log(chalk.gray(`  Visibility: ${visibility}`));
+    if (tags) {
+      console.log(chalk.gray(`  Tags: ${tags.join(', ')}`));
+    }
+    console.log();
+    console.log(chalk.blue('Others can now discover and cite your query.'));
+    console.log(chalk.blue('If they find it valuable, you\'ll receive tips/attributions.'));
+  });
+
+program
+  .command('shared')
+  .description('List shared entries')
+  .option('-n, --limit <n>', 'Number to show', '10')
+  .action((options: { limit: string }) => {
+    const limit = parseInt(options.limit, 10);
+    const entries = queryStore.listShared(limit);
+
+    if (entries.length === 0) {
+      console.log(chalk.yellow('Nothing shared yet. Share a query with: share <queryId>'));
+      return;
+    }
+
+    console.log(chalk.bold(`\nShared Entries (${entries.length}):\n`));
+    for (const entry of entries) {
+      const preview = entry.query.content.slice(0, 50) + (entry.query.content.length > 50 ? '...' : '');
+      const totalValue = entry.value.tips + entry.value.boosts;
+
+      console.log(
+        `  ${chalk.cyan(entry.query.id.slice(0, 8))} ` +
+          `${chalk.green(`${totalValue.toFixed(2)}Ω`)} ` +
+          `${chalk.gray(`(${entry.value.citations} citations, ${entry.value.uses} uses)`)}`
+      );
+      console.log(`    ${preview}`);
+      if (entry.tags?.length) {
+        console.log(chalk.gray(`    Tags: ${entry.tags.join(', ')}`));
+      }
+      console.log();
+    }
+  });
+
+program
+  .command('tip <queryId> <amount>')
+  .description('Tip a shared query (attribute value)')
+  .option('-n, --note <note>', 'Optional note')
+  .action((queryId: string, amountStr: string, options: { note?: string }) => {
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      console.log(chalk.red('Invalid amount'));
+      return;
+    }
+
+    // Find by prefix
+    const entries = queryStore.listShared(100);
+    const entry = entries.find((e) => e.query.id.startsWith(queryId));
+
+    if (!entry) {
+      console.log(chalk.red(`Shared entry not found: ${queryId}`));
+      return;
+    }
+
+    const userId = queryStore.getUserId();
+    const success = queryStore.attributeValue(entry.query.id, 'tip', amount, userId);
+
+    if (success) {
+      console.log(chalk.green(`✓ Tipped ${amount.toFixed(2)}Ω`));
+      console.log(chalk.gray(`  To: ${entry.sharedBy}`));
+      console.log(chalk.gray(`  For: ${entry.query.content.slice(0, 40)}...`));
+    } else {
+      console.log(chalk.red('Failed to tip'));
+    }
+  });
+
+program
+  .command('cite <queryId>')
+  .description('Cite a shared query (acknowledge usefulness)')
+  .action((queryId: string) => {
+    // Find by prefix
+    const entries = queryStore.listShared(100);
+    const entry = entries.find((e) => e.query.id.startsWith(queryId));
+
+    if (!entry) {
+      console.log(chalk.red(`Shared entry not found: ${queryId}`));
+      return;
+    }
+
+    const userId = queryStore.getUserId();
+    const success = queryStore.attributeValue(entry.query.id, 'citation', 1, userId);
+
+    if (success) {
+      console.log(chalk.green('✓ Cited'));
+      console.log(chalk.gray(`  ${entry.query.content.slice(0, 50)}...`));
+    } else {
+      console.log(chalk.red('Failed to cite'));
+    }
+  });
+
+program
+  .command('query-stats')
+  .description('Show query system statistics')
+  .alias('qs')
+  .action(() => {
+    const stats = queryStore.getStats();
+
+    console.log(chalk.bold('\nQuery System Stats:\n'));
+    console.log(`  User ID:          ${chalk.cyan(stats.userId)}`);
+    console.log(`  Storage:          ${chalk.gray(stats.storagePath)}`);
+    console.log();
+    console.log(`  Total Queries:    ${stats.totalQueries}`);
+    console.log(`  Total Shared:     ${stats.totalShared}`);
+    console.log(`  Compute Units:    ${stats.totalComputeUnits}`);
+    console.log(`  Value Received:   ${chalk.green(stats.totalValueReceived.toFixed(2) + 'Ω')}`);
     console.log();
   });
 

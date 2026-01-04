@@ -9,12 +9,18 @@
  * Components:
  * - DividendPool: Time preference arbitrage (demurrage → dividends)
  * - CommunityFund: Local economic sovereignty (exit fees → community)
- * - ComputePool: Proof-of-Useful-Compute bootstrap (external value → minting)
+ * - ComputePool: Job-based Proof-of-Useful-Compute (discrete jobs → rewards)
+ * - ContributionPool: Pool-based PoUC (seamless surplus compute → simulations)
  * - SimulationRegistry: Verified emergence (law sets, containers, proofs)
+ * - DeterministicCompute: Anonymous compute attestations (determinism proof only)
+ * - ComputeRewards: Reward system for anonymous compute (base + value rewards)
  * - PurposeFund: Intent-aligned resources (removal fees → purpose) [TODO]
  */
 
 export * from './dividend-pool.js';
 export * from './community-fund.js';
 export * from './compute-pool.js';
+export * from './contribution-pool.js';
 export * from './simulation.js';
+export * from './deterministic-compute.js';
+export * from './compute-rewards.js';

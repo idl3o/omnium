@@ -1,0 +1,52 @@
+# MediaMTX Configuration for Omnium Streaming
+# https://github.com/bluenviron/mediamtx
+
+###############################################
+# General settings
+
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# RTMP server (OBS ingest)
+
+rtmp: yes
+rtmpAddress: :1935
+
+###############################################
+# HLS server (browser playback)
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: no
+hlsSegmentCount: 3
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 50M
+hlsAllowOrigin: '*'
+
+###############################################
+# WebRTC server (low-latency, future)
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+
+###############################################
+# Path configuration
+
+paths:
+  # Main stream path - OBS streams to rtmp://server:1935/live/omnium
+  live/omnium:
+    source: publisher
+    # Optional: record streams
+    # record: yes
+    # recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S.mp4
+
+  # Allow any path under /live for flexibility
+  live/~^.*$:
+    source: publisher
+
+  # Fallback for direct publishing
+  all_others:
+    source: publisher

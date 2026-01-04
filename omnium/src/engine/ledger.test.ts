@@ -743,7 +743,8 @@ describe('OmniumLedger', () => {
 
     it('status() includes compute pool section', () => {
       const status = ledger.status();
-      expect(status).toContain('Compute Pool (Bootstrap)');
+      expect(status).toContain('Compute Pool (Job-based)');
+      expect(status).toContain('Contribution Pool (Seamless)');
       expect(status).toContain('Jobs Pending');
       expect(status).toContain('Rewards Minted');
     });
