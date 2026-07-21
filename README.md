@@ -1,241 +1,85 @@
-<div align="center">
+# Omnium
 
-# OMNIUM
+*The first conception of vectorised money — currency as a multi-dimensional vector, not a scalar.*
 
-### What if money could remember what it's for?
+Omnium is an early, exploratory prototype of an idea: that a unit of money might carry more than a single number. Instead of a bare quantity, each Omnium unit is a vector — it remembers when it is meant to move, where it belongs, what it is for, and where it has been. It is the **first iteration** of a line of thinking the author has since carried forward into [vectorised-money](https://github.com/idl3o/vectorised-money).
 
-A meta-currency framework implementing **dimensional money** — currency as a multi-dimensional vector rather than a scalar.
+The work sits at the intersection of Web3, AI, and philosophy: less a product than a question rendered in TypeScript — *what if money could remember what it's for?*
 
-[Whitepaper](#whitepaper) · [Getting Started](#getting-started) · [Documentation](#the-five-dimensions)
+## Concept
 
----
-
-</div>
-
-## The Vision
-
-Modern money is **one-dimensional**. A dollar is a dollar regardless of its origin, destination, time horizon, or intended purpose. This flatness isn't neutral—it privileges abstraction over meaning, liquidity over intention, and extraction over circulation.
-
-**Omnium** reimagines currency as a multi-dimensional vector. Each unit carries not just quantity, but temporal behavior, locality, purpose, and provenance. Money that remembers what it's for.
+Every unit is modelled as a five-dimensional vector:
 
 ```
 Ω = (m, T, L, P, R)
 ```
 
-| Dimension | Symbol | Description |
-|-----------|--------|-------------|
-| **Magnitude** | `m` | The quantity of value (0 to ∞) |
-| **Temporal** | `T` | Time-bound behavior — decay or growth |
-| **Locality** | `L` | Community boundaries and regional ties |
-| **Purpose** | `P` | Intent channels restricting usage |
-| **Reputation** | `R` | Provenance chain tracking history |
+| Symbol | Dimension | Meaning |
+|--------|-----------|---------|
+| `m` | Magnitude | The quantity of value |
+| `T` | Temporal | Time-bound behaviour — decay or growth across strata (T0/T1/T2/T∞) |
+| `L` | Locality | Community boundaries the unit is tied to |
+| `P` | Purpose | Intent channels that colour how a unit may be used |
+| `R` | Reputation | A provenance chain recording the unit's history |
 
----
+Temporal strata give money a time-preference without interest rates: `T0` (immediate) carries a 2% annual demurrage to encourage circulation, while `T2` (generational, 20-year lock) and `T∞` (perpetual) accrue yield. Dimensions are converted into one another through an explicit fee model, with fees returning to a shared **Commons Pool** from which new units are minted. These figures are defined directly in `src/core/types.ts` and `ECONOMICS.md`.
 
-## The Five Dimensions
+The guiding design principle is that conversions *preserve* semantic information: provenance accretes rather than being erased, and complexity is opt-in — a base unit is a plain scalar until dimensions are added.
 
-### 1. Temporal Strata
+## What's inside
 
-Time becomes a dimension of value. Some money decays to encourage flow. Some grows to reward patience.
+The implementation lives under `omnium/` and is organised into layers:
 
-| Stratum | Behavior | Use Case | Economics |
-|---------|----------|----------|-----------|
-| **T0** — Immediate | -2% / year | Daily spending, local commerce | Demurrage encourages circulation |
-| **T1** — Seasonal | Stable | Emergency funds, short-term savings | 1-year lockup, no change |
-| **T2** — Generational | +3% / year | Retirement, education funds | 20-year lock builds wealth |
-| **T∞** — Perpetual | +1.5% / year | Endowments, foundations | Principal locked forever |
+- **Core** (`src/core`) — unit creation, splitting, merging, the Commons Pool, and the conversion engine.
+- **Dimensional layers** (`src/layers`) — temporal, locality, purpose, and reputation logic.
+- **Engine & wallet** (`src/engine`, `src/wallet`) — a ledger tying the pieces together and wallet management.
+- **Economics** (`src/economics`) — a contribution-driven minting model (attention, creation, engagement, governance) with compute pools, dividends, and a community fund; see `ECONOMICS.md`.
+- **Persistence** (`src/persistence`) — content-addressed storage over Helia/IPFS, with IPNS discovery, CID chains, and pub/sub sync.
+- **Blockchain anchor** (`src/anchor`, `contracts/OmniumAnchor.sol`) — Merkle-proof checkpoints anchoring ledger state on-chain.
+- **Query engine** (`src/query`) — a small queryable store with sharing, citation, and tipping commands.
+- **CLI** (`src/cli`) — an interactive [Commander](https://github.com/tj/commander.js)-based interface.
+- **Website** (`website/`) — a Next.js front-end and whitepaper, published at [idl3o.github.io/omnium](https://idl3o.github.io/omnium/).
 
-> *"Moving between temporal strata has costs and benefits, creating a natural market for time-preference without requiring interest rates."*
+## Getting started
 
-### 2. Locality
-
-Communities create economic membranes—permeable but present. Value circulates locally while remaining connected to the global economy.
-
-- **Entry Fee (1%)** — Contribution when joining a community
-- **Exit Fee (Variable)** — Communities set their own boundary strength
-- **Internal Parity (1:1)** — Local currency trades at par within community
-
-### 3. Purpose Channels
-
-Money that carries intent. When you receive purpose-colored money, you know something about the sender's values.
-
-**Standard Channels:** Health · Education · Food · Housing · Carbon-Negative · Creator · Local Business · Charity
-
-- Adding purpose is **free** (restricts utility)
-- Removing purpose costs **3%** (stripping intent)
-
-> *"Receiving Ω-P(education) tells you something about the sender's values."*
-
-### 4. Reputation & Provenance
-
-Every unit carries its history. Semantic liquidity: money flows between meanings, but meaning accretes rather than vanishes.
-
-**Provenance Types:**
-- **Minted** — Created from Commons Pool
-- **Earned** — Payment for goods/services
-- **Gifted** — Voluntary transfer
-- **Invested** — Return on investment
-- **Inherited** — Intergenerational transfer
-
-Reputation is **opt-in**. Strip provenance anytime with a 5% fee.
-
----
-
-## Conversions & Fees
-
-Any dimension can change through conversion:
-
-```
-Ω' = Ω × f(ΔT) × f(ΔL) × f(ΔP) × f(ΔR)
-```
-
-| Dimension | Adding/Restricting | Removing/Freeing |
-|-----------|-------------------|------------------|
-| Temporal | Free (locking up) | 2-10% (unlocking) |
-| Locality | 1% (entry) | Variable (exit) |
-| Purpose | Free (restricting) | 3% (stripping) |
-| Reputation | Free (accretes) | 5% (stripping) |
-
-All fees flow to the **Commons Pool** — the base layer from which all dimensional currency emerges.
-
----
-
-## The Commons Pool
-
-At the foundation lies the Commons Pool: undifferentiated value from which all dimensional currency emerges and to which fees return.
-
-- **Minting** — New Ω created according to protocol rules
-- **Burning** — Ω returned to pool, reducing supply
-- **Fee Collection** — All conversion fees flow back
-- **Dividend Funding** — T2 and T∞ yields funded from growth
-
-> *"The Commons Pool is governed by a protocol, not a committee."*
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    OMNIUM Framework                      │
-├─────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │   Commons   │  │   Wallet     │  │ Conversion   │   │
-│  │    Pool     │  │  Manager     │  │   Engine     │   │
-│  └─────────────┘  └──────────────┘  └──────────────┘   │
-│          │               │                   │          │
-│  ┌───────┴───────────────┼───────────────────┴───────┐  │
-│  │                       │                           │  │
-│  ▼                       ▼                           ▼  │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐   │
-│  │   Temporal   │ │    Local     │ │   Purpose    │   │
-│  │   Strata     │ │  Communities │ │  Channels    │   │
-│  └──────────────┘ └──────────────┘ └──────────────┘   │
-│          │               │               │             │
-│          └───────────────┼───────────────┘             │
-│                          ▼                             │
-│                  ┌───────────────┐                     │
-│                  │  Reputation   │                     │
-│                  │   Gradients   │                     │
-│                  └───────────────┘                     │
-├─────────────────────────────────────────────────────────┤
-│            Persistence Layer (Helia/IPFS)               │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## Getting Started
-
-### Installation
+The code lives in the `omnium/` subdirectory.
 
 ```bash
 cd omnium
 npm install
-npm run build
+npm run build      # compile TypeScript
 ```
 
-### CLI Usage
+Available scripts (from `package.json`):
 
 ```bash
-# Development (no build needed)
-npx tsx src/cli/index.ts demo
-
-# Production
-node dist/cli/index.js demo
+npm run dev        # run the CLI directly via tsx
+npm test           # run the test suite (Vitest)
+npm run typecheck  # type-check without emitting
 ```
 
-### Commands
+Run the CLI without a build using `tsx`:
 
-| Command | Description |
-|---------|-------------|
-| `create-wallet <name>` | Create a new wallet |
-| `mint <amount>` | Mint Ω from Commons Pool |
-| `transfer <id> <to> [amount]` | Transfer between wallets |
-| `convert <id> [options]` | Convert dimensions (-t T2, -l community, -p purpose) |
-| `tick [days]` | Advance time (apply demurrage/dividends) |
-| `balance` | Show wallet balance |
-| `units` | List all units |
-| `history <id>` | Show provenance chain |
-| `status` | System overview |
-| `demo` | Set up sample scenario |
-
----
-
-## Data Structure
-
-```typescript
-interface OmniumUnit {
-  id: string;                    // Unique identifier
-  magnitude: number;             // Quantity of value
-  temporality: TemporalStratum;  // T0 | T1 | T2 | T∞
-  locality: Set<string>;         // Community IDs
-  purpose: Set<string>;          // Purpose channel IDs
-  provenance: ProvenanceChain;   // Complete history
-  createdAt: number;             // Creation timestamp
-  lastTickAt: number;            // Last demurrage/dividend
-  walletId: string;              // Current owner
-}
+```bash
+npx tsx src/cli/index.ts demo     # set up a sample scenario
+npx tsx src/cli/index.ts status   # system overview
+npx tsx src/cli/index.ts --help   # list all commands
 ```
 
----
+Commands include (among others) `create-wallet`, `mint`, `transfer`, `convert`, `create-community`, `join`, `register-purpose`, `tick` (advance time to apply demurrage/dividends), `history`, and `demo` — the full set is defined in `src/cli/index.ts`.
 
-## Whitepaper
+## Status
 
-For the complete technical specification, visit the [live whitepaper](https://idl3o.github.io/omnium/whitepaper/) or explore the sections above which cover the core concepts.
+This is an early prototype (`v0.1.0`), described in its own `package.json` as a "Prototype Implementation" and in `CLAUDE.md` as having 522 tests passing with the economics layer integrated. It is best read as a **first conception** — a working sketch of vectorised money rather than a finished system — and has since been **superseded by [vectorised-money](https://github.com/idl3o/vectorised-money)**, which generalises the same idea to an N-dimensional currency framework. Expect rough edges, and treat the design as exploratory rather than settled.
 
----
+Licence: MIT — see [LICENSE](LICENSE).
 
-## Design Principles
+## Related
 
-1. **Conversions preserve semantic information** — Provenance accretes, never erased
-2. **All operations are reversible** — Nothing locked forever, with appropriate fees
-3. **Complexity is opt-in** — Base Ω is simple, add dimensions as needed
-4. **Fees fund commons** — Prevent gaming, maintain system health
-
----
-
-## Technology Stack
-
-- **TypeScript** — Type-safe implementation
-- **Helia/IPFS** — Content-addressed storage
-- **Commander** — CLI framework
-- **Vitest** — Testing
+- [vectorised-money](https://github.com/idl3o/vectorised-money) — the successor: an N-dimensional currency framework, money as a vector, not a scalar.
+- [kar-coin](https://github.com/idl3o/kar-coin) — currency that scales with and through civilisational progress.
+- [helia-blockchain-token](https://github.com/idl3o/helia-blockchain-token) — currency underpinned by six philosophical frameworks.
 
 ---
 
-## License
-
-MIT
-
----
-
-<div align="center">
-
-**Omnium** — A meta-currency for dimensional economies
-
-*Money that remembers what it's for.*
-
-[GitHub](https://github.com/idl3o/omnium) · [Website](https://idl3o.github.io/omnium/)
-
-</div>
+Built by [S. Lavi](https://github.com/idl3o) · [@modsias](https://x.com/modsias)
